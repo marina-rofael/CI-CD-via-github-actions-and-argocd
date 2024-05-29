@@ -1,0 +1,78 @@
+name: Microservice 
+on:
+  pull_request:
+    # Sequence of patterns matched against refs/heads
+    branches:
+      - main
+# on:
+#   push:
+#     branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: "me-central-1"
+          aws-access-key-id: ${{ secrets.ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ secrets.Account_ID }}.dkr.ecr.me-central-1.amazonaws.com/dev-xml-local
+          tags: latest
+       
+
+      - name: Set TAG_VERSION environment variable
+        run: echo "TAG_VERSION=1.0.${{ github.run_number }}" >> $GITHUB_ENV
+      - name: Show TAG_VERSION
+        run: echo $TAG_VERSION
+        
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          platforms: "linux/amd64"
+          #context: .
+          push: true
+          tags: ${{ secrets.Account_ID }}.dkr.ecr.me-central-1.amazonaws.com/dev-xml-local:1.0.${{ github.run_number }}
+            
+        
+      - name: Checkout repository
+        uses: actions/checkout@v2
+    
+          
+      - name: get the current directory
+        run: pwd; ls
+        
+     
+      - name: Update Deployment File
+        run: | 
+          sed -i "s|image: .*|image: ${{ secrets.Account_ID }}.dkr.ecr.me-central-1.amazonaws.com/dev-xml-local:${{ env.TAG_VERSION }}|" infra_files/deployment.yaml
+
+      - name: Commit changes
+        run: |
+          git config --global user.email "${{ secrets.email }}"
+          git config --global user.name "${{ secrets.username }}"
+          git add .
+          git commit -m "Update files"
+    
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.TOKEN }}
+          branch: main
+     
